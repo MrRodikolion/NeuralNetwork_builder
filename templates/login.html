@@ -25,6 +25,12 @@
                         <h2>Login</h2>
                     </div>
                     <div class="card-body">
+                        {% if warn %}
+                        <div class="container p-2"
+                            style="background-color: #f8d7da; border: 2px solid #f5c6cb; border-radius: 10px;">
+                            <p class="text-center m-0">{{ warn }}</p>
+                        </div>
+                        {% endif %}
                         <form action="" method="post" novalidate>
                             {{ form.hidden_tag() }}
                             <div class="form-group">
