@@ -4,6 +4,7 @@ import forms
 
 from data import db_session
 from data.users import User
+from data.db_projects import DataBaseProject
 
 import datetime
 
@@ -78,13 +79,68 @@ def login():
 
 @app.route('/app')
 @app.route('/app/projects')
-@app.route('/app/projects/nn')
-@app.route('/app/projects/db')
 def projects():
     if not current_user.is_authenticated:
         return redirect('/Log-in')
 
-    return render_template('main_app.html')
+    return redirect('/app/projects/nn')
+
+
+@app.route('/app/projects/nn')
+def projects_nn():
+    if not current_user.is_authenticated:
+        return redirect('/Log-in')
+
+    return render_template('projects_nn.html')
+
+
+@app.route('/app/projects/db')
+def projects_db():
+    if not current_user.is_authenticated:
+        return redirect('/Log-in')
+
+    return render_template('projects_db.html')
+
+
+@app.route('/app/projects/create/db', methods=['GET', 'POST'])
+@login_required
+def projects_create_db():
+    form = forms.DataBaseProjectCreateForm()
+    if form.validate_on_submit():
+        db_sess = db_session.create_session()
+        # same_project = db_sess.query(DataBaseProject).filter(
+        #     DataBaseProject.user == current_user.username).first()
+        # if same_project:
+        #     return redirect(same_project.href)
+
+        new_project = DataBaseProject()
+        new_project.name = form.project_name.data
+        new_project.href = f'/app/project/db/{current_user.username}/{form.project_name.data}'
+        user = db_sess.query(User).filter(User.id == current_user.id).first()
+        user.projects.append(new_project)
+        db_sess.add(new_project)
+        db_sess.commit()
+
+        return redirect(new_project.href)
+
+    return render_template('projects_create_db.html', form=form)
+
+
+@app.route('/app/projects/create/nn', methods=['GET', 'POST'])
+@login_required
+def projects_create_nn():
+    form = forms.NeuralNetworkProjectCreateForm()
+    if form.validate_on_submit():
+        print(form.data)
+        return redirect('/')
+
+    return render_template('projects_create_nn.html', form=form)
+
+
+@app.route('/app/project/db/<project_username>/<project_name>')
+def db_project(project_username, project_name):
+    print(project_username, project_name)
+    return ';)'
 
 
 @app.route('/logout')
@@ -92,10 +148,6 @@ def projects():
 def logout():
     logout_user()
     return redirect('/')
-
-
-def working():
-    return 'working'
 
 
 if __name__ == '__main__':
