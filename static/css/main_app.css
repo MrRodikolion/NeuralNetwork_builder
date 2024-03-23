@@ -1,0 +1,58 @@
+.card-img-left {
+    width: 7rem;
+    height: 7rem;
+    object-fit: cover;
+    border-radius: 0.25rem;
+}
+
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 57px;
+    height: 100vh;
+    background-color: #f8f9fa;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 1.5rem 0;
+    margin-top: 56px;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-icon {
+    display: block;
+    width: 30px;
+    height: 30px;
+    margin-bottom: 20px;
+    color: #343a40;
+    text-decoration: none;
+}
+
+.sidebar-icon:hover {
+    color: #007bff;
+}
+
+.container-fluid {
+    padding-left: 105px;
+}
+
+.navbar {
+    z-index: 1000;
+}
+
+.selected {
+    color: #007bff;
+}
+
+.del {
+    height: 100%;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.card {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
