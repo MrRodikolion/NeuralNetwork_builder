@@ -9,7 +9,7 @@ class User(SqlAlchemyBase, UserMixin):
 
     id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
 
-    username = sa.Column(sa.String, nullable=True)
+    username = sa.Column(sa.String, nullable=True, unique=True)
     email = sa.Column(sa.String, index=True, unique=True)
     hashed_password = sa.Column(sa.String)
 
