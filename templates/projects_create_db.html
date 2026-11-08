@@ -46,6 +46,7 @@
                             <div class="mb-3">
                                 {{ form.project_name.label }}
                                 {{ form.project_name(class="form-control") }}
+                                {% for error in form.project_name.errors %}<p class="text-danger">{{ error }}</p>{% endfor %}
                             </div>
                             <div class="mb-3">
                                 {{ form.data_type.label }}

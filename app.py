@@ -1,6 +1,9 @@
-from flask import Flask, render_template, redirect, url_for, Blueprint, request, send_file
+from flask import Flask, render_template, redirect, url_for, Blueprint, request, send_file, abort
 from flask_login import LoginManager, login_user, current_user, login_required, logout_user
 import forms
+from flask_wtf import CSRFProtect, FlaskForm
+from pathlib import Path
+from urllib.parse import quote
 import zipfile
 import io
 import PIL.Image, PIL.ImageFilter
@@ -21,12 +24,44 @@ app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=365)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
+login_manager.login_view = 'login'
+CSRFProtect(app)
+app.register_blueprint(blueprint_images)
+
+
+@app.teardown_appcontext
+def close_database_session(exception=None):
+    db_session.close_session()
+
+
+def find_project(project_username, project_name):
+    project = db_session.create_session().query(DataBaseProject).join(User).filter(
+        User.username == project_username, DataBaseProject.name == project_name
+    ).first()
+    if project is None:
+        abort(404)
+    if project.user_id != current_user.id:
+        abort(403)
+    return project
+
+
+def find_image(project, img_id):
+    try:
+        index = int(img_id)
+    except ValueError:
+        abort(404)
+    if index < 0 or index >= len(project.images):
+        abort(404)
+    return project.images[index]
 
 
 @login_manager.user_loader
 def load_user(user_id):
     db_sess = db_session.create_session()
-    return db_sess.query(User).get(user_id)
+    try:
+        return db_sess.get(User, int(user_id))
+    except (ValueError, TypeError):
+        return None
 
 
 @app.route('/')
@@ -48,8 +83,11 @@ def singin():
             return render_template('singin.html', form=form, warn='Password does not match')
         if len(form.password.data) < 8:
             return render_template('singin.html', form=form, warn='Password must contain more than 8 characters')
-        if len(db_sess.query(User).filter(User.email == form.mail.data).all()) != 0:
+        if db_sess.query(User).filter(User.email == form.mail.data).first() is not None:
             return render_template('singin.html', form=form, warn='User with this email already exists')
+
+        if db_sess.query(User).filter(User.username == form.username.data).first() is not None:
+            return render_template('singin.html', form=form, warn='Username already exists')
 
         new_user = User()
         new_user.username = form.username.data
@@ -127,7 +165,8 @@ def projects_create_db():
 
         new_project = DataBaseProject()
         new_project.name = form.project_name.data
-        new_project.href = f'/app/project/db/{current_user.username}/{form.project_name.data}'
+        new_project.href = '/app/project/db/{}/{}'.format(
+            quote(current_user.username, safe=''), quote(form.project_name.data, safe=''))
         user = db_sess.query(User).filter(User.id == current_user.id).first()
         user.projects.append(new_project)
         db_sess.add(new_project)
@@ -143,7 +182,6 @@ def projects_create_db():
 def projects_create_nn():
     form = forms.NeuralNetworkProjectCreateForm()
     if form.validate_on_submit():
-        print(form.data)
         return redirect('/')
 
     return render_template('projects_create_nn.html', form=form)
@@ -159,6 +197,8 @@ def delete_db_project(project_name):
             DataBaseProject.user_id == current_user.id,
             DataBaseProject.name == project_name
         ).first()
+        if to_delete_project is None:
+            abort(404)
         for image in to_delete_project.images:
             db_sess.delete(image)
         db_sess.delete(to_delete_project)
@@ -171,36 +211,39 @@ def delete_db_project(project_name):
 
 @app.route('/app/project/db/<project_username>/<project_name>', methods=['GET', 'POST'])
 @app.route('/app/project/db/<project_username>/<project_name>/upload', methods=['GET', 'POST'])
+@login_required
 def db_project(project_username, project_name):
     db_sess = db_session.create_session()
-    project_user = db_sess.query(User).filter(
-        User.username == project_username
-    ).first()
-    project = db_sess.query(DataBaseProject).filter(
-        DataBaseProject.user_id == project_user.id,
-        DataBaseProject.name == project_name
-    ).first()
+    project = find_project(project_username, project_name)
     if request.method == 'GET':
         return render_template('db_project_upload.html', project=project)
     elif request.method == 'POST':
-        for f in request.files.getlist('file_name'):
+        uploads = [file for file in request.files.getlist('file_name') if file.filename]
+        if not uploads:
+            abort(400, 'Choose at least one image.')
+        normalized = []
+        for file in uploads:
+            try:
+                with PIL.Image.open(file.stream) as image:
+                    image.load()
+                    buffer = io.BytesIO()
+                    image.convert('RGBA').save(buffer, format='PNG')
+                    normalized.append(buffer.getvalue())
+            except (OSError, ValueError, PIL.Image.DecompressionBombError):
+                abort(400, 'Only valid images can be uploaded.')
+        for contents in normalized:
             new_img = Image()
-            new_img.data = f.read()
+            new_img.data = contents
             project.images.append(new_img)
         db_sess.commit()
         return redirect(request.url)
 
 
 @app.route('/app/project/db/<project_username>/<project_name>/dataset')
+@login_required
 def db_project_dataset(project_username, project_name):
     db_sess = db_session.create_session()
-    project_user = db_sess.query(User).filter(
-        User.username == project_username
-    ).first()
-    project = db_sess.query(DataBaseProject).filter(
-        DataBaseProject.user_id == project_user.id,
-        DataBaseProject.name == project_name
-    ).first()
+    project = find_project(project_username, project_name)
 
     image_urls = [(n, f'data:image/png;base64,{base64.b64encode(image.data).decode("utf-8")}') for n, image in
                   enumerate(project.images[:100])]
@@ -209,48 +252,33 @@ def db_project_dataset(project_username, project_name):
 
 
 @app.route('/app/project/db/<project_username>/<project_name>/<img_id>')
+@login_required
 def db_project_img_view(project_username, project_name, img_id):
     db_sess = db_session.create_session()
-    project_user = db_sess.query(User).filter(
-        User.username == project_username
-    ).first()
-    project = db_sess.query(DataBaseProject).filter(
-        DataBaseProject.user_id == project_user.id,
-        DataBaseProject.name == project_name
-    ).first()
+    project = find_project(project_username, project_name)
 
-    image = f'data:image/png;base64,{base64.b64encode(project.images[int(img_id)].data).decode("utf-8")}'
+    image = f'data:image/png;base64,{base64.b64encode(find_image(project, img_id).data).decode("utf-8")}'
 
-    return render_template('db_project_img_view.html', project=project, image=image, img_id=img_id)
+    return render_template('db_project_img_view.html', project=project, image=image, img_id=img_id, form=FlaskForm())
 
 
-@app.route('/app/project/db/<project_username>/<project_name>/<img_id>/delete')
+@app.route('/app/project/db/<project_username>/<project_name>/<img_id>/delete', methods=['POST'])
+@login_required
 def db_project_img_delete(project_username, project_name, img_id):
     db_sess = db_session.create_session()
-    project_user = db_sess.query(User).filter(
-        User.username == project_username
-    ).first()
-    project = db_sess.query(DataBaseProject).filter(
-        DataBaseProject.user_id == project_user.id,
-        DataBaseProject.name == project_name
-    ).first()
+    project = find_project(project_username, project_name)
 
-    db_sess.delete(project.images[int(img_id)])
+    db_sess.delete(find_image(project, img_id))
     db_sess.commit()
 
-    return redirect(f'/app/project/db/{project_username}/{project_name}/dataset')
+    return redirect(project.href + '/dataset')
 
 
 @app.route('/app/project/db/<project_username>/<project_name>/download', methods=['GET', 'POST'])
+@login_required
 def db_project_download(project_username, project_name):
     db_sess = db_session.create_session()
-    project_user = db_sess.query(User).filter(
-        User.username == project_username
-    ).first()
-    project = db_sess.query(DataBaseProject).filter(
-        DataBaseProject.user_id == project_user.id,
-        DataBaseProject.name == project_name
-    ).first()
+    project = find_project(project_username, project_name)
 
     form = forms.DataBaseProjectGen()
     if form.validate_on_submit():
@@ -267,12 +295,12 @@ def db_project_download(project_username, project_name):
                     to_save = io.BytesIO()
                     gray_pil_img = pil_img.convert('L')
                     gray_pil_img.save(to_save, format='PNG')
-                    zf.writestr(f'{n}_g.jpg', to_save.getvalue())
+                    zf.writestr(f'{n}_g.png', to_save.getvalue())
                 if form.is_add_blur.data:
                     to_save = io.BytesIO()
                     blur_pil_img = pil_img.filter(PIL.ImageFilter.GaussianBlur(radius=4))
                     blur_pil_img.save(to_save, format='PNG')
-                    zf.writestr(f'{n}_b.jpg', to_save.getvalue())
+                    zf.writestr(f'{n}_b.png', to_save.getvalue())
                 if form.is_add_noise.data:
                     to_save = io.BytesIO()
 
@@ -290,11 +318,11 @@ def db_project_download(project_username, project_name):
 
                     noisy_pil_image = PIL.Image.fromarray(noisy_image)
                     noisy_pil_image.save(to_save, format='PNG')
-                    zf.writestr(f'{n}_n.jpg', to_save.getvalue())
+                    zf.writestr(f'{n}_n.png', to_save.getvalue())
 
                 to_save = io.BytesIO()
                 pil_img.save(to_save, format='PNG')
-                zf.writestr(f'{n}.jpg', to_save.getvalue())
+                zf.writestr(f'{n}.png', to_save.getvalue())
 
         memory_file.seek(0)
 
@@ -304,15 +332,10 @@ def db_project_download(project_username, project_name):
 
 
 @app.route('/app/project/db/<project_username>/<project_name>/stats')
+@login_required
 def db_project_stats(project_username, project_name):
     db_sess = db_session.create_session()
-    project_user = db_sess.query(User).filter(
-        User.username == project_username
-    ).first()
-    project = db_sess.query(DataBaseProject).filter(
-        DataBaseProject.user_id == project_user.id,
-        DataBaseProject.name == project_name
-    ).first()
+    project = find_project(project_username, project_name)
 
     numper_pictures = len(project.images)
 
@@ -327,6 +350,5 @@ def logout():
 
 
 if __name__ == '__main__':
-    db_session.global_init('db/database.sqlite')
-    app.register_blueprint(blueprint_images)
+    db_session.global_init(str(Path(__file__).resolve().parent / 'db' / 'database.sqlite'))
     app.run(host='0.0.0.0', port=8080)

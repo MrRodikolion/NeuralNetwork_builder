@@ -1,125 +1,49 @@
 $(document).ready(function () {
     $('[data-toggle="tooltip"]').tooltip();
 });
-const dropFileZone = document.querySelector(".upload-zone_dragover")
-const statusText = document.getElementById("uploadForm_Status")
-const sizeText = document.getElementById("uploadForm_Size")
-const uploadInput = document.querySelector(".form-upload__input")
+const dropFileZone = document.querySelector('.upload-zone_dragover');
+const uploadInput = document.getElementById('uploadForm_File');
+const hint = document.getElementById('uploadForm_Hint');
+const preview = document.getElementById('previewImg');
 
-let setStatus = (text) => {
-    statusText.textContent = text
-}
-
-const uploadUrl = "/unicorns";
-
-["dragover", "drop"].forEach(function (event) {
-    document.addEventListener(event, function (evt) {
-        evt.preventDefault()
-        return false
-    })
-})
-
-dropFileZone.addEventListener("dragenter", function () {
-    dropFileZone.classList.add("_active")
-})
-
-dropFileZone.addEventListener("dragleave", function () {
-    dropFileZone.classList.remove("_active")
-})
-
-dropFileZone.addEventListener("drop", function () {
-    dropFileZone.classList.remove("_active")
-    const file = event.dataTransfer?.files[0]
-    if (!file) {
-        return
-    }
-
-    if (file.type.startsWith("image/")) {
-        uploadInput.files = event.dataTransfer.files
-        processingUploadFile()
-    } else {
-        setStatus("Можно загружать только изображения")
-        return false
-    }
-    handleFileSelect(uploadInput);
-})
-
-uploadInput.addEventListener("change", (event) => {
-    const file = uploadInput.files?.[0]
-    if (file && file.type.startsWith("image/")) {
-        processingUploadFile()
-    } else {
-        setStatus("Можно загружать только изображения")
-        return false
-    }
-    handleFileSelect(uploadInput);
-})
-
-function processingUploadFile(file) {
-    if (file) {
-        const dropZoneData = new FormData()
-        const xhr = new XMLHttpRequest()
-
-        dropZoneData.append("file", file)
-
-        xhr.open("POST", uploadUrl, true)
-
-        xhr.send(dropZoneData)
-
-        xhr.onload = function () {
-            if (xhr.status == 200) {
-                setStatus("Всё загружено")
-            } else {
-                setStatus("Oшибка загрузки")
-            }
-            HTMLElement.style.display = "none"
-        }
-    }
-}
-
-function processingDownloadFileWithFetch() {
-    fetch(url, {
-        method: "POST",
-    }).then(async (res) => {
-        const reader = res?.body?.getReader();
-        while (true && reader) {
-            const { value, done } = await reader?.read()
-            console.log("value", value)
-            if (done) break
-            console.log("Received", value)
-        }
-    })
-}
-
-function handleFileSelect(evt) {
-    var files = uploadInput.files; // FileList object
-    $('.thumb').remove();
-
-    // Loop through the FileList and render image files as thumbnails.
-    for (var i = 0, f; f = files[i]; i++) {
-
-        // Only process image files.
-        if (!f.type.match('image.*')) {
+function showFiles() {
+    preview.replaceChildren();
+    hint.textContent = '';
+    for (const file of uploadInput.files) {
+        if (!file.type.startsWith('image/')) {
+            hint.textContent = 'Можно загружать только изображения.';
             continue;
         }
-
-        var reader = new FileReader();
-
-        // Closure to capture the file information.
-        reader.onload = (function (theFile) {
-            return function (e) {
-                // Render thumbnail.
-                var div = document.createElement('div');
-                div.setAttribute('class', 'col');
-                div.innerHTML = ['<img class="thumb object-fit-cover" src="', e.target.result,
-                    '" title="', escape(theFile.name), '"/>'].join('');
-                document.getElementById('previewImg').insertBefore(div, null);
-            };
-        })(f);
-
-        // Read in the image file as a data URL.
-        reader.readAsDataURL(f);
+        const reader = new FileReader();
+        reader.addEventListener('load', () => {
+            const column = document.createElement('div');
+            column.className = 'col';
+            const image = document.createElement('img');
+            image.className = 'thumb object-fit-cover';
+            image.src = reader.result;
+            image.alt = file.name;
+            image.title = file.name;
+            column.appendChild(image);
+            preview.appendChild(column);
+        });
+        reader.addEventListener('error', () => {
+            hint.textContent = 'Не удалось прочитать файл: ' + file.name;
+        });
+        reader.readAsDataURL(file);
     }
 }
 
-document.getElementById('uploadForm_File').addEventListener('change', handleFileSelect, false);
+for (const eventName of ['dragover', 'drop']) {
+    document.addEventListener(eventName, event => event.preventDefault());
+}
+dropFileZone.addEventListener('dragenter', () => dropFileZone.classList.add('_active'));
+dropFileZone.addEventListener('dragleave', () => dropFileZone.classList.remove('_active'));
+dropFileZone.addEventListener('drop', event => {
+    event.preventDefault();
+    dropFileZone.classList.remove('_active');
+    if (event.dataTransfer && event.dataTransfer.files.length) {
+        uploadInput.files = event.dataTransfer.files;
+        showFiles();
+    }
+});
+uploadInput.addEventListener('change', showFiles);

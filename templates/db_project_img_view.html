@@ -71,7 +71,10 @@
                 <div class="card">
                     <img src="{{ image }}" alt="" class="card-img-top">
                     <div class="card-footer">
-                        <a href="{{project.href}}/{{ img_id }}/delete", class="btn btn-danger">Delete</a>
+                        <form action="{{project.href}}/{{ img_id }}/delete" method="post">
+                            {{ form.hidden_tag() }}
+                            <button type="submit" class="btn btn-danger">Delete</button>
+                        </form>
                     </div>
                 </div>
             </div>

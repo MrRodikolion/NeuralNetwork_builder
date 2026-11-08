@@ -72,6 +72,7 @@
                     <div
                         class="upload-zone_dragover card-body d-flex flex-column justify-content-center align-items-center">
                         <form class="form-upload" id="uploadForm" method="post" enctype="multipart/form-data">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <div
                                 class="upload-zone_dragover d-flex flex-column justify-content-center align-items-center">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
@@ -92,7 +93,7 @@
                                 </div>
                                 <div class="col-auto">
                                     <input class="form-upload__input formFileMultiple" id="uploadForm_File" type="file"
-                                        name="file_name" accept="image/*" aria-describedby="hint">
+                                        name="file_name" accept="image/*" multiple aria-describedby="hint">
                                 </div>
                             </label>
                             <div class="form-upload__container">

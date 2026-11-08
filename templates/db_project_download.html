@@ -72,6 +72,9 @@
                     {{ form.hidden_tag() }}
                     <div class="mb-3">
                         {{ form.img_size_x.label }}
+                        {% for field in [form.img_size_x, form.img_size_y] %}
+                            {% for error in field.errors %}<p class="text-danger">{{ error }}</p>{% endfor %}
+                        {% endfor %}
                         <div class="row mx-0">
                             {{ form.img_size_x(class="form-control size-field") }} 
                             <p class="mx-2 text-center">X</p>
